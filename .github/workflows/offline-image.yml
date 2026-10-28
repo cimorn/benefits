@@ -1,0 +1,91 @@
+name: Build private NAS offline image
+run-name: Offline NAS image (${{ inputs.platform }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: NAS CPU architecture
+        type: choice
+        required: true
+        default: linux/arm64
+        options:
+          - linux/amd64
+          - linux/arm64
+
+permissions:
+  contents: read
+
+concurrency:
+  group: offline-image-${{ github.ref }}-${{ inputs.platform }}
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'quit(db.adminCommand({ping:1}).ok ? 0 : 1)'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      BENEFITS_TEST_MONGODB_URI: mongodb://127.0.0.1:27017/benefits_test
+      IMAGE: ghcr.io/cimorn/benefits
+      PLATFORM: ${{ inputs.platform }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --include=dev --ignore-scripts
+      - run: npm run check
+      - run: npm test
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build and load a single-platform image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: ${{ inputs.platform }}
+          load: true
+          push: false
+          tags: |
+            ghcr.io/cimorn/benefits:latest
+            ghcr.io/cimorn/benefits:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Export compressed Docker archive
+        id: archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          architecture="${PLATFORM#linux/}"
+          archive_dir="$RUNNER_TEMP/benefits-offline"
+          archive="benefits-${GITHUB_SHA}-${architecture}.tar.gz"
+          mkdir -p "$archive_dir"
+          docker save "$IMAGE:latest" "$IMAGE:sha-${GITHUB_SHA}" | gzip -1 > "$archive_dir/$archive"
+          (cd "$archive_dir" && sha256sum "$archive" > "$archive.sha256")
+          docker image inspect "$IMAGE:sha-${GITHUB_SHA}" --format '{{.Os}}/{{.Architecture}} {{.Id}}' > "$archive_dir/image.txt"
+          printf 'Commit: %s\nRun: %s/%s/actions/runs/%s\n' "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> "$archive_dir/image.txt"
+          echo "directory=$archive_dir" >> "$GITHUB_OUTPUT"
+          echo "name=benefits-offline-${architecture}-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Offline archive: \`$archive\` ($PLATFORM). Import it with docker load and disable image pulling for the benefits service." >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload private offline image
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.archive.outputs.name }}
+          path: ${{ steps.archive.outputs.directory }}/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
