@@ -1,0 +1,16 @@
+**
+!package.json
+!package-lock.json
+!server.cjs
+!server/
+!server/*.cjs
+!index.html
+!styles.css
+!data.js
+!inventory-app.js
+!model.js
+!inventory.js
+!cloud.js
+!favicon.svg
+**/*.test.cjs
+**/tests/

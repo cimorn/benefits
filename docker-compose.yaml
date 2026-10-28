@@ -1,0 +1,61 @@
+# First create deploy/nas/.env from .env.example, then run:
+# docker compose --env-file deploy/nas/.env up -d
+# Keep the environment file and database directory when updating the image.
+name: benefits
+services:
+  benefits:
+    container_name: benefits
+    image: ghcr.io/cimorn/benefits:latest
+    pull_policy: always
+    restart: unless-stopped
+    env_file: deploy/nas/.env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOST: 0.0.0.0
+      MONGODB_DATABASE: benefits
+      MONGODB_URI: mongodb://benefits_app:${MONGO_APP_PASSWORD:?Set MONGO_APP_PASSWORD}@mongodb-benefits:27017/benefits?authSource=benefits
+    ports:
+      - "${APP_BIND:-192.168.1.107}:${APP_PORT:-18188}:3000"
+    depends_on:
+      mongodb-benefits:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  mongodb-benefits:
+    container_name: mongodb-benefits
+    image: mongo:7.0
+    user: "${MONGO_UID_GID:-1000:10}"
+    restart: unless-stopped
+    environment:
+      MONGODB_URI: mongodb://benefits_app:${MONGO_APP_PASSWORD:?Set MONGO_APP_PASSWORD}@mongodb-benefits:27017/benefits?authSource=benefits
+      MONGO_INITDB_DATABASE: benefits
+    command: ["mongod", "--auth", "--wiredTigerCacheSizeGB", "0.25"]
+    volumes:
+      - type: bind
+        source: ${MONGODB_DATA_DIR:-/volume1/docker/mongodb/data/benefits}
+        target: /data/db
+      - type: bind
+        source: ./deploy/docker/init-mongo.js
+        target: /docker-entrypoint-initdb.d/10-benefits.js
+        read_only: true
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.adminCommand({ping:1}).ok ? 0 : 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

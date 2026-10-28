@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#28654b">
+  <meta name="description" content="权益台账：记录名称、所属、类型、到期时间、次数和备注。">
+  <title>权益手册 · 淘宝 88VIP</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./data.js" defer></script>
+  <script src="./model.js" defer></script>
+  <script src="./cloud.js" defer></script>
+  <script src="./inventory.js" defer></script>
+  <script src="./inventory-app.js" defer></script>
+</head>
+<body>
+  <div class="page-backdrop" aria-hidden="true">
+    <div class="parallax-layer parallax-layer--jade"></div>
+    <div class="parallax-layer parallax-layer--warm"></div>
+  </div>
+  <a class="skip-link" href="#content">跳到权益内容</a>
+  <div class="page">
+    <main>
+      <section id="cloud-controls" class="cloud-controls" aria-label="云端保存状态" hidden>
+        <span id="sync-status" role="status">正在连接…</span>
+        <div class="cloud-actions"><button type="button" id="export-draft" hidden>导出未上传草稿</button><button type="button" id="discard-draft" hidden>清除草稿</button><button type="button" id="refresh-cloud">重新读取</button><button type="button" id="logout" hidden>退出登录</button></div>
+      </section>
+      <div id="storage-error" class="storage-error" role="alert" hidden></div>
+      <section id="login-panel" class="login-panel" aria-labelledby="login-title" hidden>
+        <h1 id="login-title">权益手册</h1>
+        <p>登录后查看和保存你的权益台账。</p>
+        <form id="login-form">
+          <label for="login-password">访问密码</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" maxlength="512" required>
+          <p id="login-error" class="form-error" role="alert" hidden></p>
+          <button type="submit" class="primary-button">登录</button>
+        </form>
+      </section>
+      <div id="ledger-area" hidden>
+      <div class="stats" id="stats" aria-label="全部权益统计"></div>
+      <div class="workspace">
+        <aside class="category-sidebar" aria-label="所属导航">
+          <button type="button" class="primary-button sidebar-add" id="add-benefit">＋ 新增权益</button>
+          <h2 class="category-heading">所属</h2>
+          <nav class="category-nav" aria-label="所属"></nav>
+          <label class="mobile-category-switcher" for="owner-select">所属<select id="owner-select"></select></label>
+        </aside>
+        <section id="content" class="content" tabindex="-1" aria-label="权益内容"></section>
+      </div>
+      </div>
+      <noscript><p class="noscript">请开启浏览器 JavaScript，查看权益内容。</p></noscript>
+    </main>
+    <footer class="site-footer">
+      <span id="save-description">正在连接 · 数量按权益条目统计</span>
+      <div class="backup-actions"><button type="button" id="export-backup" disabled>导出备份</button><button type="button" id="import-backup" disabled>导入备份</button></div>
+    </footer>
+  </div>
+  <dialog id="editor" aria-labelledby="editor-title">
+    <form id="editor-form">
+      <div class="dialog-heading"><h2 id="editor-title">编辑权益</h2><button type="button" class="close-button" data-close="editor" aria-label="关闭编辑">×</button></div>
+      <input type="hidden" name="id">
+      <div class="form-grid">
+        <label>名称<input name="name" maxlength="160" required></label>
+        <label>所属<input name="owner" list="owners" maxlength="160" required placeholder="会员卡或设备名称"></label>
+        <label>到期时间<input name="expires" type="date"></label>
+        <label>类型<input name="type" maxlength="160" placeholder="如购物、维修、影音"></label>
+        <label>次数<input name="count" maxlength="160" placeholder="如 2 次、不限次"></label>
+        <label class="full-width">备注<textarea name="notes" maxlength="3000" rows="4" placeholder="费用、限制或自己的补充"></textarea></label>
+      </div>
+      <p class="form-error" id="editor-error" role="alert" hidden></p>
+      <div class="dialog-actions"><button type="button" class="danger-link" id="delete-benefit">删除权益</button><div><button type="button" class="secondary-button" data-close="editor">取消</button><button type="submit" class="primary-button" data-save-label>保存到本机</button></div></div>
+    </form>
+  </dialog>
+  <dialog id="bulk-editor" aria-labelledby="bulk-title">
+    <form id="bulk-form">
+      <div class="dialog-heading"><h2 id="bulk-title">批量设置到期时间</h2><button type="button" class="close-button" data-close="bulk-editor" aria-label="关闭批量编辑">×</button></div>
+      <label>所属范围<select id="bulk-owner" name="owner"></select></label>
+      <p class="dialog-description" id="bulk-count"></p>
+      <label>到期时间<input type="date" name="expires" required></label>
+      <p class="form-error" id="bulk-error" role="alert" hidden></p>
+      <div class="dialog-actions end"><button type="button" class="secondary-button" data-close="bulk-editor">取消</button><button class="primary-button" type="submit" data-save-label>保存到本机</button></div>
+    </form>
+  </dialog>
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <div class="dialog-heading"><h2 id="confirm-title">确认操作</h2><button type="button" class="close-button" data-close="confirm-dialog" aria-label="关闭确认">×</button></div>
+    <p id="confirm-message"></p>
+    <div class="dialog-actions end"><button type="button" class="secondary-button" data-close="confirm-dialog">取消</button><button type="button" class="primary-button" id="confirm-action">确认</button></div>
+  </dialog>
+  <datalist id="owners"></datalist>
+  <input id="backup-file" type="file" accept=".json,application/json" hidden>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

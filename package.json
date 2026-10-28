@@ -1,0 +1,13 @@
+{
+  "name": "benefits-handbook",
+  "version": "1.0.0",
+  "private": true,
+  "description": "权益手册：本地管理与个人 MongoDB 云同步",
+  "scripts": {
+    "start": "node server.cjs",
+    "test": "node --test *.test.cjs server/tests/*.test.cjs",
+    "check": "node --check inventory-app.js && node --check cloud.js && node --check data.js && node --check model.js && node --check inventory.js && node --check server.cjs && node --check server/http.cjs && node --check server/auth.cjs && node --check server/store.cjs && node --check deploy/docker/init-mongo.js"
+  },
+  "dependencies": { "mongodb": "^6.20.0" },
+  "engines": { "node": ">=22" }
+}
