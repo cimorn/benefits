@@ -4,13 +4,15 @@
 
 ## 打开
 
+正式网站：[权益手册](https://benefits.mcj.life/)。输入访问密码登录后，可在电脑和手机上使用同一份 NAS 台账。修改后点击“保存到云端”，确认显示“已保存到云端”后再切换设备；可通过页脚导出 JSON 备份。
+
 直接双击 `index.html`，无需安装依赖。台账可离线使用，官方来源链接需要联网。
 
 也可以在本目录运行 `node server.cjs`，打开 http://127.0.0.1:4188 。端口被占用时，可通过环境变量 `HANDBOOK_PORT` 指定其他端口。有 npm 的环境也可运行 `npm start`。
 
 ## 内容
 
-- 首次打开预置 20 项：淘宝 88VIP 5 项，京东 PLUS 5 项，iPad AppleCare+ 4 项，DJI Care 6 项（Action 6 和 Pocket 4 各 3 项）。
+- 本机模式首次打开预置 20 项：淘宝 88VIP 5 项，京东 PLUS 5 项，iPad AppleCare+ 4 项，DJI Care 6 项（Action 6 和 Pocket 4 各 3 项）。云端首次使用时由你明确选择导入备份或使用预置权益。
 - 到期时间默认留空。可以新增、编辑、删除，或按所属批量填写到期时间。
 - 只保留名称、所属、类型、到期时间、次数、备注；次数显示在权益名称下方。
 - 总数按权益条目统计，不把“无限次”或置换次数放大为权益数量。
@@ -31,13 +33,13 @@
 
 配置 MongoDB 后进入云端模式：登录后读取 NAS 数据，点击保存会同步到数据库。编辑时会保留本机草稿；其他设备已保存新版本时，旧编辑会提示冲突，并保留草稿供导出。云端为空时不会自动上传默认数据，可明确选择导入备份或使用预置权益。
 
-- GitHub：`cimorn/benefits`；镜像：`ghcr.io/cimorn/benefits:latest`。
+- 公开程序仓库：[cimorn/benefits](https://github.com/cimorn/benefits)；公开镜像：`ghcr.io/cimorn/benefits:latest`，支持匿名拉取及 amd64/arm64。
 - 项目和应用容器：`benefits`；数据库容器：`mongodb-benefits`。
 - 数据库：`benefits`；独立数据库账号：`benefits_app`。
 - NAS 项目目录：`/volume1/docker/benefits`。
 - NAS 数据目录：`/volume1/docker/mongodb/data/benefits`，映射到 MongoDB 的 `/data/db`。
-- 默认应用端口：NAS `18188` → 容器 `3000`；MongoDB 不发布主机端口。
-- 域名前缀：`benefits`。HTTPS 反向代理须保留配置的公开域名 Host。
+- 应用绑定：NAS `192.168.1.107:18188` → 容器 `3000`；MongoDB 不发布主机端口。
+- 正式网址：[https://benefits.mcj.life/](https://benefits.mcj.life/)。现有 Cloudflare Tunnel 将该域名转发到 NAS 应用端口，并保留公开域名 Host。
 
 将 `.env.example` 复制为 `deploy/nas/.env`，设置独立的访问密码、会话密钥、数据库密码和 `APP_ORIGIN`，再运行：
 
@@ -53,6 +55,8 @@ docker compose --env-file deploy/nas/.env up -d --no-deps benefits
 ```
 
 GitHub Actions 会执行语法检查、单元测试和真实 MongoDB 集成测试，再发布 amd64/arm64 镜像。首次迁移使用原 localhost 页面导出的 JSON 备份，在 NAS 页面登录后导入；不同域名无法直接读取 localhost 的浏览器缓存。
+
+NAS 在线拉取受阻时，可手动构建并导入离线镜像，见[离线导入说明](docs/offline-nas-image.md)。
 
 ## 维护
 
