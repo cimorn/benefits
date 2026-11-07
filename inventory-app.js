@@ -11,7 +11,7 @@
   const external = ([label, url]) => `<a href="${escape(url)}" target="_blank" rel="noopener noreferrer">${escape(label)} ↗</a>`;
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   let records = [], storageReady = false, confirmAction, toastTimer;
-  let mode = 'pending', authenticated = false, cloudReady = false, revision = 0, cloudInitialized = false, writing = false, loadingCloud = false;
+  let mode = 'pending', authenticated = false, passwordRequired = true, cloudReady = false, revision = 0, cloudInitialized = false, writing = false, loadingCloud = false;
   let editorBase, bulkBase, importBase;
   const browserStorage = {getItem:key => localStorage.getItem(key),setItem:(key,value) => localStorage.setItem(key,value),removeItem:key => localStorage.removeItem(key)};
   const cloud = BenefitsCloud.create({model:M, storage:browserStorage, fetch:(...args) => fetch(...args), uuid:() => crypto.randomUUID()});
@@ -23,9 +23,9 @@
   function updateControls() {
     const ready = mode === 'local' ? storageReady : cloudReady && authenticated;
     document.querySelector('#ledger-area').hidden = !(mode === 'local' || (cloudReady && authenticated));
-    document.querySelector('#login-panel').hidden = !(mode === 'cloud' && !authenticated);
+    document.querySelector('#login-panel').hidden = !(mode === 'cloud' && passwordRequired && !authenticated);
     document.querySelector('#cloud-controls').hidden = mode === 'local';
-    document.querySelector('#logout').hidden = mode !== 'cloud' || !authenticated;
+    document.querySelector('#logout').hidden = mode !== 'cloud' || !passwordRequired || !authenticated;
     document.querySelector('#refresh-cloud').disabled = writing || loadingCloud;
     document.querySelector('#logout').disabled = writing;
     document.querySelector('#add-benefit').disabled = !ready || writing;
@@ -57,7 +57,7 @@
     setStatus('请登录后读取云端台账'); updateControls();
   }
   function cloudFailure(error) {
-    if (error.status === 401) {
+    if (error.status === 401 && passwordRequired) {
       editor.close(); bulk.close(); confirmation.close(); requireLogin('登录已过期，请重新登录。未上传草稿保留在本机。');
     } else {
       setStatus(error.status === 409 ? '云端已有更新 · 草稿保留在本机' : error.code === 'DRAFT_EXISTS' ? '有未上传草稿 · 请先导出并清除' : '连接失败 · 草稿保留在本机');
@@ -88,6 +88,7 @@
     try {
       const session = await cloud.session(); mode = session.mode;
       if (mode === 'local') { clearStorageError(); localStart(); return; }
+      passwordRequired = session.access !== 'public';
       authenticated = session.authenticated;
       if (!authenticated) requireLogin(); else { updateControls(); await refreshCloud(); }
     } catch (error) { setStatus('暂时无法连接服务'); storageError(error.message); updateControls(); }
@@ -152,7 +153,7 @@
       if (!storageReady) throw Error('本机存储不可用，暂时不能保存');
       records = M.save(localStorage, next); render(); return;
     }
-    if (mode !== 'cloud' || !authenticated || !cloudReady) throw Error('请先登录并读取云端台账。');
+    if (mode !== 'cloud' || !authenticated || !cloudReady) throw Error(passwordRequired ? '请先登录并读取云端台账。' : '请先读取云端台账。');
     writing = true; setStatus('正在保存到云端…'); updateControls();
     try {
       const value = await cloud.save(next, base.revision);
@@ -307,6 +308,7 @@
   document.querySelector('#refresh-cloud').addEventListener('click',() => mode === 'cloud' ? refreshCloud() : bootstrap());
   document.querySelector('#login-form').addEventListener('submit',async event => {
     event.preventDefault();
+    if (!passwordRequired) return;
     const button = document.querySelector('#login-form button[type="submit"]'); button.disabled = true;
     const password = document.querySelector('#login-password');
     try {
@@ -316,7 +318,7 @@
     finally {button.disabled = false;}
   });
   document.querySelector('#logout').addEventListener('click',async() => {
-    if(writing)return;
+    if(writing || !passwordRequired)return;
     try {await cloud.logout();requireLogin();}catch(error){storageError(error.message);}
   });
   bootstrap();

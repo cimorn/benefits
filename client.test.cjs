@@ -60,6 +60,16 @@ test('cloud login bootstrap never writes preset or legacy records to the server'
   assert.deepEqual(app.requests.map(([path])=>path),['/api/session']);
 });
 
+test('public cloud opens the editable ledger without login or logout controls', async() => {
+  const app=harness(async path=>response(path === '/api/session' ? {mode:'cloud',authenticated:true,access:'public'} : state()));
+  await flush();
+  assert.equal(app.get('#ledger-area').hidden,false);
+  assert.equal(app.get('#login-panel').hidden,true);
+  assert.equal(app.get('#logout').hidden,true);
+  assert.equal(app.get('#add-benefit').disabled,false);
+  assert.deepEqual(app.requests.map(([path])=>path),['/api/session','/api/benefits']);
+});
+
 test('empty cloud is displayed without uploading initialBenefits', async() => {
   const app=harness(async path=>response(path === '/api/session' ? {mode:'cloud',authenticated:true} : {version:2,initialized:false,revision:0,records:[],updatedAt:null}));
   await flush();

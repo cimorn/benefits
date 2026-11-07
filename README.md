@@ -4,7 +4,7 @@
 
 ## 打开
 
-正式网站：[权益手册](https://benefits.mcj.life/)。输入访问密码登录后，可在电脑和手机上使用同一份 NAS 台账。修改后点击“保存到云端”，确认显示“已保存到云端”后再切换设备；可通过页脚导出 JSON 备份。
+正式网站：[权益手册](https://benefits.mcj.life/)。电脑和手机使用同一份 NAS 台账。修改后点击“保存并同步”，等页面显示“已保存到云端”后再切换设备。可通过页脚导出 JSON 备份。
 
 直接双击 `index.html`，无需安装依赖。台账可离线使用，官方来源链接需要联网。
 
@@ -31,7 +31,7 @@
 
 ## NAS 与 MongoDB
 
-配置 MongoDB 后进入云端模式：登录后读取 NAS 数据，点击保存会同步到数据库。编辑时会保留本机草稿；其他设备已保存新版本时，旧编辑会提示冲突，并保留草稿供导出。云端为空时不会自动上传默认数据，可明确选择导入备份或使用预置权益。
+配置 MongoDB 后进入云端模式。点击保存会同步到数据库。编辑时会保留本机草稿；其他设备已保存新版本时，旧编辑会提示冲突，并保留草稿供导出。云端为空时可以选择导入备份或使用预置权益。
 
 - 公开程序仓库：[cimorn/benefits](https://github.com/cimorn/benefits)；公开镜像：`ghcr.io/cimorn/benefits:latest`，支持匿名拉取及 amd64/arm64。
 - 项目和应用容器：`benefits`；数据库容器：`mongodb-benefits`。
@@ -41,7 +41,12 @@
 - 应用绑定：NAS `192.168.1.107:18188` → 容器 `3000`；MongoDB 不发布主机端口。
 - 正式网址：[https://benefits.mcj.life/](https://benefits.mcj.life/)。现有 Cloudflare Tunnel 将该域名转发到 NAS 应用端口，并保留公开域名 Host。
 
-将 `.env.example` 复制为 `deploy/nas/.env`，设置独立的访问密码、会话密钥、数据库密码和 `APP_ORIGIN`，再运行：
+将 `.env.example` 复制为 `deploy/nas/.env`，设置数据库密码和 HTTPS `APP_ORIGIN`，再选择访问方式：
+
+- `APP_ACCESS=password` 为默认值。设置 `APP_PASSWORD` 和 `SESSION_SECRET` 后，访客须登录才能读写台账。
+- `APP_ACCESS=public` 允许任何能打开网站的人直接查看、修改和删除共享台账，无需设置 `APP_PASSWORD` 或 `SESSION_SECRET`。
+
+启动项目：
 
 ```sh
 docker compose --env-file deploy/nas/.env up -d
@@ -54,7 +59,7 @@ docker compose --env-file deploy/nas/.env pull benefits
 docker compose --env-file deploy/nas/.env up -d --no-deps benefits
 ```
 
-GitHub Actions 会执行语法检查、单元测试和真实 MongoDB 集成测试，再发布 amd64/arm64 镜像。首次迁移使用原 localhost 页面导出的 JSON 备份，在 NAS 页面登录后导入；不同域名无法直接读取 localhost 的浏览器缓存。
+GitHub Actions 会执行语法检查、单元测试和真实 MongoDB 集成测试，再发布 amd64/arm64 镜像。首次迁移时，在 NAS 页面导入从原 localhost 页面导出的 JSON 备份。不同域名使用独立的浏览器缓存。
 
 NAS 在线拉取受阻时，可手动构建并导入离线镜像，见[离线导入说明](docs/offline-nas-image.md)。
 

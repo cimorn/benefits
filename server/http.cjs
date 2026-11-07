@@ -22,8 +22,10 @@ const configurationError = message => Object.assign(Error(message), {configurati
 function config(environment) {
   const production = environment.NODE_ENV === 'production';
   const cloud = Boolean(environment.MONGODB_URI);
+  const access = environment.APP_ACCESS ?? 'password';
+  if (!['password', 'public'].includes(access)) throw configurationError('APP_ACCESS 必须为 password 或 public。');
   if (production && !cloud) throw configurationError('生产环境必须设置 MONGODB_URI。');
-  if (!cloud) return {production, cloud, origin: null};
+  if (!cloud) return {production, cloud, origin: null, access};
   let origin;
   try {
     const parsed = new URL(environment.APP_ORIGIN);
@@ -31,9 +33,11 @@ function config(environment) {
     origin = parsed.origin;
   } catch { throw configurationError('请设置有效的 APP_ORIGIN。'); }
   if (production && !origin.startsWith('https://')) throw configurationError('APP_ORIGIN 必须使用 HTTPS。');
-  if (typeof environment.APP_PASSWORD !== 'string' || !environment.APP_PASSWORD.length || environment.APP_PASSWORD.length > 512) throw configurationError('请设置有效的 APP_PASSWORD。');
-  if (typeof environment.SESSION_SECRET !== 'string' || environment.SESSION_SECRET.length < 32) throw configurationError('SESSION_SECRET 必须至少 32 位。');
-  return {production, cloud, origin};
+  if (access === 'password') {
+    if (typeof environment.APP_PASSWORD !== 'string' || !environment.APP_PASSWORD.length || environment.APP_PASSWORD.length > 512) throw configurationError('请设置有效的 APP_PASSWORD。');
+    if (typeof environment.SESSION_SECRET !== 'string' || environment.SESSION_SECRET.length < 32) throw configurationError('SESSION_SECRET 必须至少 32 位。');
+  }
+  return {production, cloud, origin, access};
 }
 
 async function jsonBody(request, limit) {
@@ -54,9 +58,9 @@ async function jsonBody(request, limit) {
 }
 
 async function createServer({environment = process.env, store, staticDir = path.resolve(__dirname, '..')} = {}) {
-  const {production, cloud, origin} = config(environment);
+  const {production, cloud, origin, access} = config(environment);
   let closeStore;
-  const auth = cloud ? await createAuth({password: environment.APP_PASSWORD, secret: environment.SESSION_SECRET, secure: production}) : null;
+  const auth = cloud && access === 'password' ? await createAuth({password: environment.APP_PASSWORD, secret: environment.SESSION_SECRET, secure: production}) : null;
   if (cloud && !store) {
     const connected = await connectBenefitsStore(environment);
     store = connected.store;
@@ -80,16 +84,16 @@ async function createServer({environment = process.env, store, staticDir = path.
       if (origin ? request.headers.host !== new URL(origin).host : !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):\d+$/.test(localOrigin)) throw problem('请求域名无效。', 403, 'INVALID_HOST');
       if (!['GET', 'HEAD', 'POST'].includes(request.method)) return send(405, {error: '不支持此请求。'}, {Allow: 'GET, HEAD, POST'});
       if (request.method === 'POST' && (request.headers.origin !== (origin || localOrigin) || request.headers['sec-fetch-site'] === 'cross-site')) throw problem('请求来源无效，请从本站页面重试。', 403, 'INVALID_ORIGIN');
-      const session = () => ({mode: cloud ? 'cloud' : 'local', authenticated: cloud ? auth.session(request) : true});
+      const session = () => ({mode: cloud ? 'cloud' : 'local', authenticated: !auth || auth.session(request), ...(cloud && access === 'public' ? {access} : {})});
       if (url.pathname === '/api/session' && request.method === 'GET') return send(200, session());
-      if (url.pathname === '/api/login' && request.method === 'POST' && cloud) {
+      if (url.pathname === '/api/login' && request.method === 'POST' && auth) {
         const result = await auth.login(() => jsonBody(request, 4096), request.socket.remoteAddress);
         return send(result.status, result.cookie ? {mode: 'cloud', authenticated: true} : {error: result.error}, result.cookie ? {'Set-Cookie': result.cookie} : result.retryAfter ? {'Retry-After': String(result.retryAfter), Connection: 'close'} : {});
       }
-      if (url.pathname === '/api/logout' && request.method === 'POST' && cloud) return send(200, {mode: 'cloud', authenticated: false}, {'Set-Cookie': auth.clear()});
+      if (url.pathname === '/api/logout' && request.method === 'POST' && auth) return send(200, {mode: 'cloud', authenticated: false}, {'Set-Cookie': auth.clear()});
       if (url.pathname === '/api/benefits') {
         if (!cloud) throw problem('本地模式使用当前浏览器存储。', 409, 'CLOUD_NOT_CONFIGURED');
-        if (!auth.session(request)) throw problem('请先登录。', 401, 'AUTH_REQUIRED');
+        if (auth && !auth.session(request)) throw problem('请先登录。', 401, 'AUTH_REQUIRED');
         if (request.method === 'GET') return send(200, await store.read());
         if (request.method === 'POST') return send(200, await store.save(await jsonBody(request, 4 * 1024 * 1024)));
         return send(405, {error: '不支持此请求。'}, {Allow: 'GET, POST'});

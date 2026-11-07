@@ -76,6 +76,43 @@ test('cloud data requires login; password login sets protected session and logou
   assert.ok(logout.headers.get('set-cookie').includes('Max-Age=0'));
 });
 
+test('explicit public access permits anonymous reads and saves without session credentials', async t => {
+  const environment = {...cloudEnvironment(), APP_ACCESS: 'public'};
+  delete environment.APP_PASSWORD;
+  delete environment.SESSION_SECRET;
+  const {request} = await running(t, environment);
+  const session = await request('/api/session');
+  assert.deepEqual(await session.json(), {mode: 'cloud', authenticated: true, access: 'public'});
+  assert.equal(session.headers.get('set-cookie'), null);
+  assert.equal((await request('/api/benefits')).status, 200);
+
+  const first = await request('/api/benefits', {method: 'POST', body: write()});
+  assert.equal(first.status, 200);
+  const saved = await first.json();
+  assert.equal(saved.revision, 1);
+  assert.deepEqual(saved.records, [record()]);
+  assert.deepEqual(await (await request('/api/benefits')).json(), saved);
+
+  const stale = await request('/api/benefits', {method: 'POST', body: write(0, [record('other')], 'other-request')});
+  assert.equal(stale.status, 409);
+  assert.equal((await stale.json()).code, 'REVISION_CONFLICT');
+  assert.equal((await request('/api/benefits', {method: 'POST', body: write(1, [{...record(), expires: '2026-02-30'}], 'invalid')})).status, 400);
+  assert.deepEqual(await (await request('/api/benefits')).json(), saved);
+});
+
+test('public writes still require the configured Host and same Origin', async t => {
+  const {request} = await running(t, {...cloudEnvironment(), APP_ACCESS: 'public'});
+  for (const headers of [{Host: 'evil.example'}, {Origin: 'https://evil.example'}, {'Sec-Fetch-Site': 'cross-site'}]) {
+    const response = await request('/api/benefits', {method: 'POST', body: write(), headers});
+    assert.equal(response.status, 403);
+  }
+  assert.equal((await (await request('/api/benefits')).json()).revision, 0);
+});
+
+test('misspelled access settings fail closed', async () => {
+  await assert.rejects(exported(backend, 'createServer')({environment: {...cloudEnvironment(), APP_ACCESS: 'publci'}, store: {}}), /APP_ACCESS/);
+});
+
 test('host and origin guards reject proxy mistakes and cross-site writes', async t => {
   const {request} = await running(t);
   assert.equal((await request('/api/session', {headers: {Host: 'evil.example'}})).status, 403);

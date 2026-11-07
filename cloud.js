@@ -53,7 +53,7 @@
       async session() {
         const value = await request('/api/session');
         if (!['local','cloud'].includes(value?.mode) || typeof value.authenticated !== 'boolean') throw failure('无法确认保存模式，请重新连接服务。');
-        return {mode:value.mode, authenticated:value.authenticated};
+        return {mode:value.mode, authenticated:value.authenticated, ...(value.mode === 'cloud' && value.access === 'public' ? {access:'public'} : {})};
       },
       login:password => request('/api/login', {method:'POST', body:{password}}),
       logout:() => request('/api/logout', {method:'POST', body:{}}),
