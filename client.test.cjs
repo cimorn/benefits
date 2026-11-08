@@ -73,6 +73,12 @@ test('public cloud opens the simplified editable ledger without routine status o
   for (const id of ['stats','sync-status','refresh-cloud','save-description','export-backup','import-backup','backup-file']) assert.equal(pageIds.has(id),false);
   assert.match(app.get('#content').innerHTML,/<th scope="col">权益<\/th>/);
   assert.doesNotMatch(app.get('#content').innerHTML,/record-owner|class="sources"/);
+  assert.doesNotMatch(html,/class="category-heading"/);
+  assert.match(html,/<nav class="category-nav" aria-label="所属">/);
+  assert.match(html,/<label\b[^>]*\bfor="owner-select"[^>]*>\s*所属\s*<select\b[^>]*\bid="owner-select"/);
+  assert.doesNotMatch(app.get('#content').innerHTML,/class="list-total"/);
+  assert.match(app.get('#content').innerHTML,/class="brand-description">1 项权益/);
+  assert.match(app.get('.category-nav').innerHTML,/class="nav-count">1</);
   assert.match(app.get('#content').innerHTML,/id="expiry-filter"/);
   assert.deepEqual(app.requests.map(([path])=>path),['/api/session','/api/benefits']);
 });

@@ -205,7 +205,6 @@
             </tr>`; }).join('')}</tbody>
           </table>
           ${!visible.length ? `<div class="empty-state"><p>${all.length ? '没有符合条件的权益' : '还没有权益'}</p><button class="secondary-button" type="button" data-empty-action="${all.length ? 'clear' : 'add'}">${all.length ? '清除筛选' : '新增权益'}</button>${mode === 'cloud' && !cloudInitialized ? '<button class="secondary-button" type="button" data-use-presets>使用预置权益</button>' : ''}</div>` : ''}
-          <p class="list-total">显示 ${visible.length} 项</p>
         </div>
       </div>`;
     document.querySelector('#owners').innerHTML = owners.map(owner => `<option value="${escape(owner)}"></option>`).join('');
