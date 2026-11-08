@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const M = require('./model.js');
 const C = require('./cloud.js');
+const html = fs.readFileSync(require.resolve('./index.html'),'utf8');
+const pageIds = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(([,id])=>id));
 const record = (id, notes = '') => ({id,name:'测试权益',owner:'测试会员',expires:'',type:'',count:'',notes});
 const state = (revision = 3, records = [record('remote')]) => ({version:2,initialized:true,revision,records,updatedAt:'2026-10-28T00:00:00.000Z'});
 const response = body => ({ok:true,status:200,json:async() => body});
@@ -33,7 +35,7 @@ function harness(fetcher, initialRaw) {
     element.elements=new Proxy({namedItem:key => ({get value(){return element.values[key]??'';},set value(value){element.values[key]=value;}})}, {get(target,key){return key in target ? target[key] : {get value(){return element.values[key]??'';},set value(value){element.values[key]=value;}};}});
   }
   const storage={getItem:key=>saved.get(key)??null,setItem:(key,value)=>saved.set(key,value),removeItem:key=>saved.delete(key)};
-  const document={querySelector:get,querySelectorAll:()=>[],addEventListener:(type,fn)=>{events[type]=fn;},hidden:false,createElement:()=>new Element()};
+  const document={querySelector(selector){const id=/^#([\w-]+)$/.exec(selector)?.[1];return id && !pageIds.has(id) ? null : get(selector);},querySelectorAll:()=>[],addEventListener:(type,fn)=>{events[type]=fn;},hidden:false,createElement:()=>new Element()};
   const window={matchMedia:()=>({matches:false,addEventListener(){}}),addEventListener:(type,fn)=>{events[type]=fn;},scrollY:0};
   const context={BenefitsModel:M,BenefitsCloud:C,initialBenefits:[record('preset')],handbookData:{},document,window,location:{protocol:'http:',hash:''},localStorage:storage,fetch:async(path,options)=>{requests.push([path,options]);return fetcher(path,options);},URL,URLSearchParams,Blob,AbortController,crypto:{randomUUID:()=> 'generated-id'},setTimeout:()=>1,clearTimeout(){},requestAnimationFrame:()=>1,FormData:class {constructor(form){return Object.entries(form.values);}}};
   vm.runInNewContext(fs.readFileSync(require.resolve('./inventory-app.js'),'utf8'),context);
@@ -60,14 +62,39 @@ test('cloud login bootstrap never writes preset or legacy records to the server'
   assert.deepEqual(app.requests.map(([path])=>path),['/api/session']);
 });
 
-test('public cloud opens the editable ledger without login or logout controls', async() => {
+test('public cloud opens the simplified editable ledger without routine status or backup controls', async() => {
   const app=harness(async path=>response(path === '/api/session' ? {mode:'cloud',authenticated:true,access:'public'} : state()));
   await flush();
   assert.equal(app.get('#ledger-area').hidden,false);
   assert.equal(app.get('#login-panel').hidden,true);
   assert.equal(app.get('#logout').hidden,true);
+  assert.equal(app.get('#cloud-controls').hidden,true);
   assert.equal(app.get('#add-benefit').disabled,false);
+  for (const id of ['stats','sync-status','refresh-cloud','save-description','export-backup','import-backup','backup-file']) assert.equal(pageIds.has(id),false);
+  assert.match(app.get('#content').innerHTML,/<th scope="col">权益<\/th>/);
+  assert.doesNotMatch(app.get('#content').innerHTML,/record-owner|class="sources"/);
+  assert.match(app.get('#content').innerHTML,/id="expiry-filter"/);
   assert.deepEqual(app.requests.map(([path])=>path),['/api/session','/api/benefits']);
+});
+
+test('connection and ledger read errors expose a retry until the cloud opens', async() => {
+  let sessions=0, reads=0;
+  const unavailable = {ok:false,status:503,json:async()=>({error:'暂时无法连接'})};
+  const app=harness(async path=>{
+    if(path === '/api/session') return ++sessions===1 ? unavailable : response({mode:'cloud',authenticated:true,access:'public'});
+    return ++reads===1 ? unavailable : response(state());
+  });
+  await flush();
+  assert.equal(app.get('#ledger-area').hidden,true);
+  assert.equal(app.get('#storage-error').hidden,false);
+  assert.equal(app.get('#retry-cloud').hidden,false);
+  await app.get('#retry-cloud').dispatch('click');
+  assert.equal(app.get('#ledger-area').hidden,true);
+  assert.equal(app.get('#retry-cloud').hidden,false);
+  await app.get('#retry-cloud').dispatch('click');
+  assert.equal(app.get('#ledger-area').hidden,false);
+  assert.equal(app.get('#storage-error').hidden,true);
+  assert.equal(app.get('#cloud-controls').hidden,true);
 });
 
 test('empty cloud is displayed without uploading initialBenefits', async() => {
@@ -87,7 +114,7 @@ test('save awaits acknowledgement and retains the editor-opening revision across
     return new Promise(resolve=>{releaseRead=resolve;});
   });
   await flush();
-  app.get('#refresh-cloud').dispatch('click');
+  app.events.visibilitychange();
   await flush();
   app.get('#add-benefit').dispatch('click');
   app.get('#editor-form').values=record('new','draft');
@@ -119,6 +146,9 @@ test('a conflicting save leaves entered values and a recoverable draft intact', 
   assert.equal(app.get('#editor-form').values.notes,'keep this');
   assert.equal(JSON.parse(app.saved.get(C.DRAFT_KEY)).records.find(item=>item.id==='new').notes,'keep this');
   assert.match(app.get('#editor-error').textContent,/云端/);
+  assert.equal(app.get('#export-draft').hidden,false);
+  assert.equal(app.get('#discard-draft').hidden,false);
+  assert.equal(app.get('#retry-cloud').hidden,false);
 });
 
 test('local mode preserves another tab independent edits while a dialog is open', async() => {
@@ -141,7 +171,7 @@ test('bulk date changes keep the opening snapshot when another refresh completes
     return new Promise(resolve=>{releaseRead=resolve;});
   });
   await flush();
-  app.get('#refresh-cloud').dispatch('click');await flush();
+  app.events.visibilitychange();await flush();
   app.get('#set-dates').dispatch('click');
   app.get('#bulk-form').values={expires:'2027-01-01'};
   releaseRead(response(state(4,[record('remote'),record('new-on-server')])));await flush();
@@ -149,22 +179,6 @@ test('bulk date changes keep the opening snapshot when another refresh completes
   assert.equal(posted.baseRevision,3);
   assert.deepEqual(posted.records.map(item=>item.id),['remote']);
   assert.equal(posted.records[0].expires,'2027-01-01');
-});
-
-test('backup import saves against the revision captured before the file picker opened', async() => {
-  let current=3,posted;
-  const app=harness(async(path,options)=>{
-    if(path==='/api/session')return response({mode:'cloud',authenticated:true});
-    if(options.method==='POST'){posted=JSON.parse(options.body);return response(state(5,posted.records));}
-    return response(state(current));
-  });
-  await flush();
-  app.get('#import-backup').dispatch('click');
-  current=4;await app.get('#refresh-cloud').dispatch('click');
-  await app.get('#backup-file').dispatch('change',{target:{files:[{size:200,text:async()=>M.encode([record('imported')])}],value:'backup.json'}});
-  await app.get('#confirm-action').dispatch('click');
-  assert.equal(posted.baseRevision,3);
-  assert.equal(posted.records[0].id,'imported');
 });
 
 test('expired login hides private content while preserving the failed cloud draft', async() => {

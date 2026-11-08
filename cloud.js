@@ -72,7 +72,7 @@
         if (typeof requestId !== 'string' || !requestId) throw failure('保存请求标识无效。');
         const pending = {version:2, baseRevision, records:normalized, requestId};
         try { preserveLegacy(); storage.setItem(DRAFT_KEY, JSON.stringify(pending)); }
-        catch { throw failure('无法保留本机草稿，暂未上传。请导出备份并检查浏览器存储空间。'); }
+        catch { throw failure('无法保留本机草稿，暂未上传。请检查浏览器存储空间后重试。'); }
         writing = true;
         try {
           const snapshot = checkedSnapshot(await request('/api/benefits', {method:'POST', body:pending}));
